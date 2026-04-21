@@ -5,7 +5,7 @@ import org.gradle.api.Project;
 import org.gradle.api.attributes.Attribute;
 
 public abstract class CentralPortalPublishingPlugin implements Plugin<Project> {
-    static final Attribute<String> UPLOADS_BUNDLE = Attribute.of("dev.lukebemish.central-portal-publishing.internal.uploads-bundle", String.class);
+    static final Attribute<Boolean> UPLOADS_BUNDLE = Attribute.of(CentralPortalProjectExtension.BUNDLE_GROUP, Boolean.class);
 
     @Override
     public void apply(Project project) {

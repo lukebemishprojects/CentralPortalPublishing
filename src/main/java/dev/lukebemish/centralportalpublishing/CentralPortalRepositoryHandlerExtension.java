@@ -40,7 +40,8 @@ public abstract class CentralPortalRepositoryHandlerExtension {
 
     public void portalBundle(String path, String name) {
         var fullName = CentralPortalProjectExtension.taskValue(path, name);
-        var attrName = CentralPortalProjectExtension.attrValue(path, name);
+        var capabilityGroup = CentralPortalProjectExtension.capabilityGroup(path, name);
+        var capabilityName = CentralPortalProjectExtension.capabilityModule(this.getProject().getPath());
         var repoDirectory = getProjectLayout().getBuildDirectory().dir("centralPortalPublishing/repositories/"+fullName);
 
         var repo = delegate.maven(r -> {
@@ -64,7 +65,8 @@ public abstract class CentralPortalRepositoryHandlerExtension {
 
         var publishTask = getProject().getTasks().named("publishAllPublicationsToCentralPortal" + StringUtils.capitalize(fullName) +"Repository");
         var outgoing = getProject().getConfigurations().consumable(UPLOADS_BUNDLE_CONFIGURATION + StringUtils.capitalize(fullName), config -> {
-            config.getAttributes().attribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE, attrName);
+            config.getAttributes().attribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE, true);
+            config.getOutgoing().capability(capabilityGroup + ":" + capabilityName + ":1");
         });
         getProject().getArtifacts().add(outgoing.getName(), repoDirectory, artifact -> {
             artifact.builtBy(publishTask);

@@ -4,6 +4,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.ArtifactCollection;
+import org.gradle.api.artifacts.ProjectDependency;
 import org.gradle.api.model.ObjectFactory;
 import org.gradle.api.plugins.ExtensionAware;
 import org.gradle.api.publish.PublishingExtension;
@@ -18,6 +19,7 @@ import java.util.Map;
 public abstract class CentralPortalProjectExtension {
     static final String CONSUMES_BUNDLE_UPLOAD_DEPENDENCIES = "_centralPortalPublishingConsumesBundleUploadDependencies";
     static final String CONSUMES_BUNDLE_UPLOAD = "_centralPortalPublishingConsumesBundleUpload";
+    static final String BUNDLE_GROUP = "dev.lukebemish.central-portal-publishing.internal.uploads-bundle";
 
     @Inject
     public CentralPortalProjectExtension() {
@@ -36,7 +38,7 @@ public abstract class CentralPortalProjectExtension {
 
     static String taskValue(String project, String name) {
         var parts = project.split(":");
-        StringBuilder attrValue = new StringBuilder();
+        StringBuilder taskName = new StringBuilder();
         boolean isFirst = true;
         for (var part : parts) {
             if (part.isEmpty()) {
@@ -44,22 +46,22 @@ public abstract class CentralPortalProjectExtension {
             }
             if (isFirst) {
                 isFirst = false;
-                attrValue.append(part);
+                taskName.append(part);
             } else {
-                attrValue.append(StringUtils.capitalize(part));
+                taskName.append(StringUtils.capitalize(part));
             }
         }
         if (isFirst) {
-            attrValue.append(name);
+            taskName.append(name);
         } else {
-            attrValue.append(StringUtils.capitalize(name));
+            taskName.append(StringUtils.capitalize(name));
         }
-        return attrValue.toString();
+        return taskName.toString();
     }
 
-    static String attrValue(String project, String name) {
+    static String capabilityModule(String project) {
         var parts = project.split(":");
-        StringBuilder attrValue = new StringBuilder();
+        StringBuilder value = new StringBuilder(BUNDLE_GROUP + ".");
         boolean isFirst = true;
         for (var part : parts) {
             if (part.isEmpty()) {
@@ -67,44 +69,48 @@ public abstract class CentralPortalProjectExtension {
             }
             if (isFirst) {
                 isFirst = false;
-                attrValue.append(part);
+                value.append(part);
             } else {
-                attrValue.append(":");
-                attrValue.append(part);
+                value.append(".");
+                value.append(part);
             }
         }
-        attrValue.append("::");
-        attrValue.append(name);
-        return attrValue.toString();
+        return value.toString();
+    }
+
+    static String capabilityGroup(String project, String name) {
+        return capabilityModule(project) +
+            ".." +
+            name;
     }
 
     public void bundle(String name, Action<? super CentralPortalBundleSpec> action) {
         getProject().getPluginManager().apply("publishing");
-        String attrValue = attrValue(getProject().getPath(), name);
+        String capabilityGroup = capabilityGroup(getProject().getPath(), name);
         var depConfiguration = getProject().getConfigurations().dependencyScope(CONSUMES_BUNDLE_UPLOAD_DEPENDENCIES + StringUtils.capitalize(name));
         var configuration = getProject().getConfigurations().resolvable(CONSUMES_BUNDLE_UPLOAD + StringUtils.capitalize(name), config -> {
-            config.getAttributes().attribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE, attrValue);
+            config.getAttributes().attribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE, true);
             config.extendsFrom(depConfiguration.get());
             config.setTransitive(false);
         });
         getProject().getRootProject().getAllprojects().forEach(p -> {
             var isolated = p.getIsolated();
-            getProject().getDependencies().add(depConfiguration.getName(), getProject().getDependencies().project(Map.of(
+            var dependency = getProject().getDependencies().project(Map.of(
                 "path", isolated.getPath()
-            )));
+            ));
+            dependency = ((ProjectDependency) dependency).capabilities(c -> c.requireCapability(capabilityGroup + ":" + capabilityModule(isolated.getPath())));
+            getProject().getDependencies().add(depConfiguration.getName(), dependency);
         });
         var bundleDependencies = getProject().files();
         var artifacts = configuration.map(config -> config.getIncoming().artifactView(view -> {
             view.setLenient(true); // So that we act as expected with projects that do not use this bundle
             view.withVariantReselection();
-            view.getAttributes().attribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE, attrValue);
+            view.getAttributes().attribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE, true);
         }).getArtifacts());
         bundleDependencies.from(artifacts.flatMap(ArtifactCollection::getResolvedArtifacts).map(set -> {
             var files = new ArrayList<File>();
             for (var resolved : set) {
-                if (attrValue.equals(resolved.getVariant().getAttributes().getAttribute(CentralPortalPublishingPlugin.UPLOADS_BUNDLE))) {
-                    files.add(resolved.getFile());
-                }
+                files.add(resolved.getFile());
             }
             return files;
         }));
