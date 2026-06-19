@@ -115,19 +115,35 @@ public abstract class CentralPortalProjectExtension {
             return files;
         }));
         bundleDependencies.builtBy(artifacts.map(ArtifactCollection::getArtifactFiles));
+
+        var bundleSpec = getObjects().newInstance(CentralPortalBundleSpec.class);
+        action.execute(bundleSpec);
+
         var makeBundle = getProject().getTasks().register("make"+StringUtils.capitalize(name)+"CentralPortalBundle", Zip.class, task -> {
             task.getDestinationDirectory().set(getProject().getLayout().getBuildDirectory().dir("centralPortalPublishing/bundles"));
             task.getArchiveFileName().set(name+".zip");
             task.dependsOn(bundleDependencies);
+            task.getInputs().property("stripSignatureHashes", bundleSpec.getStripSignatureHashes());
+            task.getInputs().property("stripOptionalHashes", bundleSpec.getStripOptionalHashes());
             task.from(bundleDependencies.getAsFileTree(), spec -> {
                 spec.exclude("**/maven-metadata.xml");
                 spec.exclude("**/maven-metadata.xml.*");
+                if (bundleSpec.getStripSignatureHashes().get()) {
+                    spec.exclude("**/*.asc.sha1");
+                    spec.exclude("**/*.asc.sha256");
+                    spec.exclude("**/*.asc.sha512");
+                    spec.exclude("**/*.asc.md5");
+                }
+                if (bundleSpec.getStripOptionalHashes().get()) {
+                    spec.exclude("**/*.sha256");
+                    spec.exclude("**/*.sha512");
+                }
             });
         });
         var publishBundle = getProject().getTasks().register("publish"+StringUtils.capitalize(name)+"CentralPortalBundle", UploadBundleTask.class, task -> {
             task.getInputs().files(bundleDependencies.getAsFileTree().filter(f -> !f.getName().equals("maven-metadata.xml") && !f.getName().startsWith("maven-metadata.xml."))).skipWhenEmpty();
             task.setGroup("publishing");
-            action.execute(task.getBundleSpec());
+            task.from(bundleSpec);
             task.getBundleFile().set(makeBundle.flatMap(Zip::getArchiveFile));
             task.dependsOn(makeBundle);
         });

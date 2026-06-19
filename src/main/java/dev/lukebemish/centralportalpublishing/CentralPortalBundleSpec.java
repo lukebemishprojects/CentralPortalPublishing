@@ -1,31 +1,30 @@
 package dev.lukebemish.centralportalpublishing;
 
 import org.gradle.api.provider.Property;
-import org.gradle.api.tasks.Input;
-import org.gradle.api.tasks.Internal;
 
 import javax.inject.Inject;
 
 public abstract class CentralPortalBundleSpec {
-    @Internal
     public abstract Property<String> getUsername();
 
-    @Internal
     public abstract Property<String> getPassword();
 
-    @Input
     public abstract Property<String> getPortalUrl();
 
-    @Input
     public abstract Property<String> getPublishingType();
+
+    public abstract Property<Long> getVerificationTimeoutSeconds();
+
+    public abstract Property<Boolean> getStripSignatureHashes();
+
+    public abstract Property<Boolean> getStripOptionalHashes();
 
     @Inject
     public CentralPortalBundleSpec() {
         getPortalUrl().convention("https://central.sonatype.com/");
         getVerificationTimeoutSeconds().convention(2L*60);
         getPublishingType().convention("USER_MANAGED");
+        getStripOptionalHashes().convention(false);
+        getStripSignatureHashes().convention(true);
     }
-
-    @Internal
-    public abstract Property<Long> getVerificationTimeoutSeconds();
 }

@@ -8,8 +8,10 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import org.gradle.api.DefaultTask;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.Property;
+import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
-import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.PathSensitive;
 import org.gradle.api.tasks.PathSensitivity;
 import org.gradle.api.tasks.TaskAction;
@@ -33,11 +35,31 @@ public abstract class UploadBundleTask extends DefaultTask {
     @PathSensitive(PathSensitivity.NAME_ONLY)
     public abstract RegularFileProperty getBundleFile();
 
-    @Nested
-    public abstract CentralPortalBundleSpec getBundleSpec();
+    @Internal
+    public abstract Property<String> getUsername();
+
+    @Internal
+    public abstract Property<String> getPassword();
+
+    @Input
+    public abstract Property<String> getPortalUrl();
+
+    @Input
+    public abstract Property<String> getPublishingType();
+
+    @Internal
+    public abstract Property<Long> getVerificationTimeoutSeconds();
 
     @Inject
     public UploadBundleTask() {}
+
+    public void from(CentralPortalBundleSpec spec) {
+        getUsername().set(spec.getUsername());
+        getPassword().set(spec.getPassword());
+        getPortalUrl().set(spec.getPortalUrl());
+        getPublishingType().set(spec.getPublishingType());
+        getVerificationTimeoutSeconds().set(spec.getVerificationTimeoutSeconds());
+    }
 
     @TaskAction
     public void execute() {
@@ -59,9 +81,9 @@ public abstract class UploadBundleTask extends DefaultTask {
             )
             .build();
 
-        var publishingType = getBundleSpec().getPublishingType().get();
+        var publishingType = getPublishingType().get();
 
-        var url = getBundleSpec().getPortalUrl().get() + "api/v1/publisher/upload?publishingType=" + publishingType;
+        var url = getPortalUrl().get() + "api/v1/publisher/upload?publishingType=" + publishingType;
         if (!url.startsWith("https://")) {
             throw new IllegalArgumentException("URL must use HTTPS");
         }
@@ -85,19 +107,19 @@ public abstract class UploadBundleTask extends DefaultTask {
             deployment = Objects.requireNonNull(result.body()).string();
         }
 
-        var timeoutSeconds = Duration.ofSeconds(getBundleSpec().getVerificationTimeoutSeconds().get());
+        var timeoutSeconds = Duration.ofSeconds(getVerificationTimeoutSeconds().get());
         var betweenRequests = Duration.ofSeconds(2);
         if (timeoutSeconds.isPositive()) {
             final var start = Instant.now();
             while (true) {
                 if (Instant.now().isAfter(start.plus(timeoutSeconds))) {
-                    throw new IOException("Timed out waiting for bundle to be verified. You may need to check the deployment on the Central Portal UI ("+getBundleSpec().getPortalUrl().get()+").");
+                    throw new IOException("Timed out waiting for bundle to be verified. You may need to check the deployment on the Central Portal UI ("+getPortalUrl().get()+").");
                 }
                 try {
                     try (var result = client.newCall(new Request.Builder()
                         .header("Authorization", "Bearer " + authBase64())
                         .post(RequestBody.create(new byte[0]))
-                        .url(getBundleSpec().getPortalUrl().get() + "api/v1/publisher/status?id=" + deployment)
+                        .url(getPortalUrl().get() + "api/v1/publisher/status?id=" + deployment)
                         .build()
                     ).execute()) {
                         if (!result.isSuccessful()) {
@@ -116,7 +138,7 @@ public abstract class UploadBundleTask extends DefaultTask {
                             }
                             case "VALIDATED" -> getLogger().lifecycle("Deployment passed validation and ready to manually deploy.");
                             case "PUBLISHED", "PUBLISHING" -> getLogger().lifecycle("Deployment passed validation and is being published.");
-                            case "FAILED" -> throw new IOException("Deployment failed. Check the Central Portal UI ("+getBundleSpec().getPortalUrl().get()+") for more details.");
+                            case "FAILED" -> throw new IOException("Deployment failed. Check the Central Portal UI ("+getPortalUrl().get()+") for more details.");
                             default -> throw new IOException("Unknown deployment state: " + deploymentState);
                         }
                         break;
@@ -142,7 +164,7 @@ public abstract class UploadBundleTask extends DefaultTask {
     }
 
     private String authBase64() {
-        var tokenUnEncoded = getBundleSpec().getUsername().get() + ":" + getBundleSpec().getPassword().get();
+        var tokenUnEncoded = getUsername().get() + ":" + getPassword().get();
         return Base64.getEncoder().encodeToString(tokenUnEncoded.getBytes(StandardCharsets.UTF_8));
     }
 }
